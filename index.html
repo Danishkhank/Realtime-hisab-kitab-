@@ -232,6 +232,7 @@
       let received = 0;
 
       entries.forEach(entry => {
+        if (entry.status === "pending") return;
         const amount = Number(entry.amount || 0);
 
         if (entry.type === "given") {
@@ -303,6 +304,71 @@
     /* =========================================================
        LOADING
        ========================================================= */
+
+    function entryDetail(e, name) {
+      return `Member: ${name}\nType: ${e.type === "given" ? "Admin ne diye" : "Admin ko mile"}\nAmount: ${money(e.amount)}\nNote: ${e.note || "-"}\nKisne likha: ${e.byName || "Admin"}\nKab: ${formatDate(e.createdAt)}`;
+    }
+
+    function notify(uid, text) {
+      return db.ref("notifications/" + uid).push({ text, at: Date.now(), read: false });
+    }
+
+    function MemberEntryModal({ onClose, onSave, saving }) {
+      const [form, setForm] = useState({ type: "received", amount: "", note: "" });
+      function submit(ev) {
+        ev.preventDefault();
+        const amount = Number(form.amount);
+        if (!amount || amount <= 0) { alert("Valid amount enter kijiye."); return; }
+        onSave({ type: form.type, amount, note: form.note.trim() });
+      }
+      return (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <form onSubmit={submit} className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-5">
+            <h3 className="text-xl font-black">Admin ke saath nayi entry</h3>
+            <p className="text-sm text-slate-500 mt-1 mb-4">Ye entry admin ke confirm karne ke baad hi hisaab mein judegi.</p>
+            <label className="text-sm font-bold text-slate-600">Type</label>
+            <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full mt-1 mb-3 rounded-2xl border border-slate-200 px-4 py-3">
+              <option value="received">Maine admin ko paise diye</option>
+              <option value="given">Maine admin se paise liye</option>
+            </select>
+            <label className="text-sm font-bold text-slate-600">Amount (₹)</label>
+            <input type="number" min="1" step="0.01" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="w-full mt-1 mb-3 rounded-2xl border border-slate-200 px-4 py-3" />
+            <label className="text-sm font-bold text-slate-600">Note</label>
+            <textarea rows="2" maxLength="200" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="w-full mt-1 rounded-2xl border border-slate-200 px-4 py-3" />
+            <div className="flex gap-2 mt-5">
+              <button type="button" onClick={onClose} className="flex-1 rounded-2xl bg-slate-100 font-bold py-3">Band karein</button>
+              <button disabled={saving} className="flex-1 rounded-2xl bg-blue-600 text-white font-bold py-3 disabled:opacity-50">{saving ? "Bhej rahe..." : "Admin ko bhejein"}</button>
+            </div>
+          </form>
+        </div>
+      );
+    }
+
+    function PendingPanel({ pending, names, onConfirm, onReject }) {
+      if (!pending.length) {
+        return <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center card-shadow"><div className="text-4xl mb-2">✅</div><p className="font-black">Koi pending entry nahi hai.</p></div>;
+      }
+      return (
+        <div className="space-y-3">
+          {pending.map(e => (
+            <div key={e.id} className="bg-white rounded-3xl border border-amber-200 p-5 card-shadow">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-black">{names[e.memberUid] || "Member"}</p>
+                  <p className="text-sm text-slate-500">{e.type === "given" ? "Member ne admin se liye" : "Member ne admin ko diye"} · {formatDate(e.createdAt)}</p>
+                  {e.note && <p className="text-sm text-slate-600 mt-1 break-words">{e.note}</p>}
+                </div>
+                <p className="font-black text-lg whitespace-nowrap">{money(e.amount)}</p>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button onClick={() => onReject(e)} className="flex-1 rounded-xl bg-red-50 text-red-700 font-bold py-2.5">Reject / Delete</button>
+                <button onClick={() => onConfirm(e)} className="flex-1 rounded-xl bg-emerald-600 text-white font-bold py-2.5">Confirm</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
 
     function LoadingScreen({ text = "Loading..." }) {
       return (
@@ -1114,19 +1180,21 @@
          ----------------------------------------- */
 
       const totalGiven = entries
-        .filter(e => e.type === "given")
+        .filter(e => e.type === "given" && e.status !== "pending")
         .reduce(
           (sum, e) => sum + Number(e.amount || 0),
           0
         );
 
       const totalReceived = entries
-        .filter(e => e.type === "received")
+        .filter(e => e.type === "received" && e.status !== "pending")
         .reduce(
           (sum, e) => sum + Number(e.amount || 0),
           0
         );
 
+      const pendingList = entries.filter(e => e.status === "pending");
+      const nameMap = Object.fromEntries(members.map(m => [m.uid, m.name]));
       const totalBalance =
         totalGiven - totalReceived;
 
@@ -1202,6 +1270,7 @@
          ----------------------------------------- */
 
       async function saveEntry(form) {
+        if (!window.confirm("Ye entry save karein?\n\n" + entryDetail(form, memberName(form.memberUid)))) return;
         setSaving(true);
 
         try {
@@ -1209,6 +1278,9 @@
 
           await ref.set({
             memberUid: form.memberUid,
+            status: "confirmed",
+            by: user.uid,
+            byName: "Admin",
             amount: Number(form.amount),
             type: form.type,
             note: form.note || "",
@@ -1238,17 +1310,34 @@
          DELETE ENTRY
          ----------------------------------------- */
 
+      async function confirmEntry(entry) {
+        if (!window.confirm("Kya ye entry sahi hai? Confirm karein?\n\n" + entryDetail(entry, memberName(entry.memberUid)))) return;
+        try {
+          await db.ref("entries/" + entry.id).update({ status: "confirmed", confirmedAt: Date.now() });
+          await notify(entry.memberUid, `Admin ne aapki ${money(entry.amount)} ki entry confirm kar di hai.`);
+          onToast("success", "Entry confirm ho gayi.");
+        } catch (error) { onToast("error", friendlyFirebaseError(error)); }
+      }
+
+      async function rejectEntry(entry) {
+        if (!window.confirm("Ye entry reject karke delete karein?\n\n" + entryDetail(entry, memberName(entry.memberUid)))) return;
+        try {
+          await db.ref("entries/" + entry.id).remove();
+          await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) galat thi ya admin ne reject kar di, isliye delete ho gayi hai.`);
+          onToast("success", "Entry delete ho gayi.");
+        } catch (error) { onToast("error", friendlyFirebaseError(error)); }
+      }
+
       async function deleteEntry(entry) {
-        const ok = window.confirm(
-          "Kya aap is transaction ko delete karna chahte hain?"
-        );
+        const ok = window.confirm("Is entry ko delete karein?\n\n" + entryDetail(entry, memberName(entry.memberUid)));
 
         if (!ok) return;
 
         try {
-          await db
-            .ref("entries/" + entry.id)
-            .remove();
+          await db.ref("entries/" + entry.id).remove();
+          if (entry.by && entry.by !== user.uid) {
+            await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) admin ne delete kar di hai.`);
+          }
 
           onToast(
             "success",
@@ -1399,6 +1488,13 @@
               />
             </div>
 
+            {pendingList.length > 0 && activeTab !== "pending" && (
+              <button onClick={() => setActiveTab("pending")} className="w-full text-left rounded-2xl border border-amber-200 bg-amber-50 p-4 mb-5">
+                <p className="font-black text-amber-800">🔔 {pendingList.length} entry aapke confirmation ka intezaar kar rahi hain</p>
+                <p className="text-sm text-amber-700">Dekhne ke liye yahan dabayein</p>
+              </button>
+            )}
+
             {/* TABS */}
 
             <div className="bg-white rounded-2xl border border-slate-200 p-1.5 flex gap-1 mb-5 overflow-x-auto">
@@ -1428,6 +1524,12 @@
                 }
               >
                 Ledger
+              </button>
+              <button
+                onClick={() => setActiveTab("pending")}
+                className={"px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap " + (activeTab === "pending" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100")}
+              >
+                Pending{pendingList.length > 0 && <span className="ml-1.5 bg-red-600 text-white rounded-full px-2 text-xs">{pendingList.length}</span>}
               </button>
             </div>
 
@@ -1755,7 +1857,13 @@
             )}
           </main>
 
-          {memberModal && (
+          {activeTab === "pending" && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 pb-10">
+            <PendingPanel pending={pendingList} names={nameMap} onConfirm={confirmEntry} onReject={rejectEntry} />
+          </div>
+        )}
+
+        {memberModal && (
             <AddMemberModal
               onClose={() =>
                 setMemberModal(false)
@@ -1792,6 +1900,49 @@
       const [entries, setEntries] = useState([]);
       const [loading, setLoading] = useState(true);
       const [notFound, setNotFound] = useState(false);
+      const [notes, setNotes] = useState([]);
+      const [showNotes, setShowNotes] = useState(false);
+      const [entryModal, setEntryModal] = useState(false);
+      const [saving, setSaving] = useState(false);
+
+      useEffect(() => {
+        if (!user?.uid) return;
+        const ref = db.ref("notifications/" + user.uid);
+        const h = snap => {
+          const d = snap.val() || {};
+          setNotes(Object.entries(d).map(([id, v]) => ({ id, ...v })).sort((a, b) => b.at - a.at));
+        };
+        ref.on("value", h, () => {});
+        return () => ref.off("value", h);
+      }, [user?.uid]);
+
+      function toggleNotes() {
+        const next = !showNotes;
+        setShowNotes(next);
+        if (next) notes.filter(n => !n.read).forEach(n => db.ref(`notifications/${user.uid}/${n.id}/read`).set(true));
+      }
+
+      async function saveMyEntry(f) {
+        const e = { ...f, memberUid: user.uid, byName: member.name, createdAt: Date.now() };
+        if (!window.confirm("Ye entry admin ko bhejein?\n\n" + entryDetail(e, member.name))) return;
+        setSaving(true);
+        try {
+          await db.ref("entries").push().set({
+            memberUid: user.uid, amount: f.amount, type: f.type, note: f.note,
+            createdAt: Date.now(), createdBy: normalizeEmail(user.email),
+            by: user.uid, byName: member.name, status: "pending"
+          });
+          setEntryModal(false);
+          onToast("success", "Entry admin ko confirmation ke liye bhej di gayi.");
+        } catch (error) { onToast("error", friendlyFirebaseError(error)); }
+        finally { setSaving(false); }
+      }
+
+      async function cancelMine(entry) {
+        if (!window.confirm("Apni ye entry cancel karein?\n\n" + entryDetail(entry, member.name))) return;
+        try { await db.ref("entries/" + entry.id).remove(); onToast("success", "Entry cancel ho gayi."); }
+        catch (error) { onToast("error", friendlyFirebaseError(error)); }
+      }
 
       /* -----------------------------------------
          MEMBER PROFILE REALTIME
@@ -1845,7 +1996,7 @@
       useEffect(() => {
         if (!user?.uid) return;
 
-        const ref = db.ref("entries");
+        const ref = db.ref("entries").orderByChild("memberUid").equalTo(user.uid);
 
         const handler = snapshot => {
           const data = snapshot.val() || {};
@@ -1931,6 +2082,19 @@
           />
 
           <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+            <div className="flex gap-2 mb-4">
+              <button onClick={() => setEntryModal(true)} className="rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-3">+ Entry</button>
+              <button onClick={toggleNotes} className="rounded-2xl bg-white border border-slate-200 font-bold px-4 py-3">Notifications{notes.some(n => !n.read) && <span className="ml-1.5 bg-red-600 text-white rounded-full px-2 text-xs">{notes.filter(n => !n.read).length}</span>}</button>
+            </div>
+            {showNotes && (
+              <div className="bg-white rounded-3xl border border-slate-200 card-shadow mb-5 divide-y divide-slate-100">
+                {notes.length === 0 ? <p className="p-6 text-center text-slate-500">Koi notification nahi.</p> : notes.map(n => (
+                  <div key={n.id} className="p-4"><p className="text-sm font-semibold">{n.text}</p><p className="text-xs text-slate-400 mt-1">{formatDate(n.at)}</p></div>
+                ))}
+              </div>
+            )}
+            {entryModal && <MemberEntryModal onClose={() => setEntryModal(false)} onSave={saveMyEntry} saving={saving} />}
+
             {/* PROFILE */}
 
             <div className="bg-slate-900 text-white rounded-3xl p-6 sm:p-8 mb-5 overflow-hidden relative">
@@ -1966,7 +2130,7 @@
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               <StatCard
-                title="Maine Diye"
+                title="Admin ne Diye"
                 value={money(summary.given)}
                 subtitle="Total given"
                 icon="↗"
@@ -1974,7 +2138,7 @@
               />
 
               <StatCard
-                title="Mujhe Mile"
+                title="Maine Diye"
                 value={money(summary.received)}
                 subtitle="Total received"
                 icon="↙"
@@ -2098,8 +2262,8 @@
                             <div className="font-black text-slate-900">
                               {entry.type ===
                               "given"
-                                ? "Maine diye"
-                                : "Mujhe mile"}
+                                ? "Admin ne diye"
+                                : "Maine diye"}
                             </div>
 
                             <div className="text-xs text-slate-500 mt-1">
@@ -2108,6 +2272,12 @@
                               )}
                             </div>
 
+                            {entry.status === "pending" && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <span className="text-xs font-bold rounded-full bg-amber-100 text-amber-700 px-2.5 py-1">Admin confirmation baaki</span>
+                                {entry.by === user.uid && <button onClick={() => cancelMine(entry)} className="text-xs font-bold text-red-600">Cancel</button>}
+                              </div>
+                            )}
                             {entry.note && (
                               <div className="text-sm text-slate-600 mt-2 break-words">
                                 {entry.note}
