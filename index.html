@@ -102,6 +102,7 @@
     ::-webkit-scrollbar-track {
       background: transparent;
     }
+      @media print { header, button, .no-print { display: none !important; } body { background: #fff; } }
   </style>
 </head>
 
@@ -205,7 +206,7 @@
 
       if (!phone) return null;
 
-      let message = `Namaste ${member.name || ""},%0A%0A`;
+      let message = "";
 
       if (summary.balance > 0) {
         message += `Aapke hisaab ke mutabik aapko ₹${summary.balance.toFixed(2)} dene hain.`;
@@ -305,8 +306,17 @@
        LOADING
        ========================================================= */
 
+    function downloadCsv(rows, filename) {
+      const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+      const blob = new Blob(["\ufeff" + rows.map(r => r.map(q).join(",")).join("\n")], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+    }
+
     function entryDetail(e, name) {
-      return `Member: ${name}\nType: ${e.type === "given" ? "Admin ne diye" : "Admin ko mile"}\nAmount: ${money(e.amount)}\nNote: ${e.note || "-"}\nKisne likha: ${e.byName || "Admin"}\nKab: ${formatDate(e.createdAt)}`;
+      return `Member: ${name}\nType: ${e.type === "given" ? "Danish ne diye" : "Danish ko mile"}\nAmount: ${money(e.amount)}\nNote: ${e.note || "-"}\nKisne likha: ${e.byName || "Danish"}\nKab: ${formatDate(e.createdAt)}`;
     }
 
     function notify(uid, text) {
@@ -324,12 +334,12 @@
       return (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <form onSubmit={submit} className="w-full max-w-lg bg-white rounded-3xl shadow-2xl p-5">
-            <h3 className="text-xl font-black">Admin ke saath nayi entry</h3>
-            <p className="text-sm text-slate-500 mt-1 mb-4">Ye entry admin ke confirm karne ke baad hi hisaab mein judegi.</p>
+            <h3 className="text-xl font-black">Danish ke saath nayi entry</h3>
+            <p className="text-sm text-slate-500 mt-1 mb-4">Ye entry Danish ke confirm karne ke baad hi hisaab mein judegi.</p>
             <label className="text-sm font-bold text-slate-600">Type</label>
             <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="w-full mt-1 mb-3 rounded-2xl border border-slate-200 px-4 py-3">
-              <option value="received">Maine admin ko paise diye</option>
-              <option value="given">Maine admin se paise liye</option>
+              <option value="received">Maine Danish ko paise diye</option>
+              <option value="given">Maine Danish se paise liye</option>
             </select>
             <label className="text-sm font-bold text-slate-600">Amount (₹)</label>
             <input type="number" min="1" step="0.01" inputMode="decimal" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="w-full mt-1 mb-3 rounded-2xl border border-slate-200 px-4 py-3" />
@@ -337,7 +347,7 @@
             <textarea rows="2" maxLength="200" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} className="w-full mt-1 rounded-2xl border border-slate-200 px-4 py-3" />
             <div className="flex gap-2 mt-5">
               <button type="button" onClick={onClose} className="flex-1 rounded-2xl bg-slate-100 font-bold py-3">Band karein</button>
-              <button disabled={saving} className="flex-1 rounded-2xl bg-blue-600 text-white font-bold py-3 disabled:opacity-50">{saving ? "Bhej rahe..." : "Admin ko bhejein"}</button>
+              <button disabled={saving} className="flex-1 rounded-2xl bg-blue-600 text-white font-bold py-3 disabled:opacity-50">{saving ? "Bhej rahe..." : "Danish ko bhejein"}</button>
             </div>
           </form>
         </div>
@@ -355,7 +365,7 @@
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-black">{names[e.memberUid] || "Member"}</p>
-                  <p className="text-sm text-slate-500">{e.type === "given" ? "Member ne admin se liye" : "Member ne admin ko diye"} · {formatDate(e.createdAt)}</p>
+                  <p className="text-sm text-slate-500">{e.type === "given" ? "Member ne Danish se liye" : "Member ne Danish ko diye"} · {formatDate(e.createdAt)}</p>
                   {e.note && <p className="text-sm text-slate-600 mt-1 break-words">{e.note}</p>}
                 </div>
                 <p className="font-black text-lg whitespace-nowrap">{money(e.amount)}</p>
@@ -560,10 +570,6 @@
                   )}
                 </button>
               </form>
-
-              <div className="mt-6 p-4 rounded-2xl bg-blue-50 border border-blue-100 text-sm text-blue-800">
-                <b>Admin:</b> {ADMIN_EMAIL}
-              </div>
             </div>
           </div>
         </div>
@@ -609,7 +615,7 @@
                   <div className="text-xs text-slate-500">
                     {normalizeEmail(user?.email) ===
                     ADMIN_EMAIL
-                      ? "Administrator"
+                      ? "Danish"
                       : "Member"}
                   </div>
                 </div>
@@ -1280,7 +1286,7 @@
             memberUid: form.memberUid,
             status: "confirmed",
             by: user.uid,
-            byName: "Admin",
+            byName: "Danish",
             amount: Number(form.amount),
             type: form.type,
             note: form.note || "",
@@ -1314,7 +1320,7 @@
         if (!window.confirm("Kya ye entry sahi hai? Confirm karein?\n\n" + entryDetail(entry, memberName(entry.memberUid)))) return;
         try {
           await db.ref("entries/" + entry.id).update({ status: "confirmed", confirmedAt: Date.now() });
-          await notify(entry.memberUid, `Admin ne aapki ${money(entry.amount)} ki entry confirm kar di hai.`);
+          await notify(entry.memberUid, `Danish ne aapki ${money(entry.amount)} ki entry confirm kar di hai.`);
           onToast("success", "Entry confirm ho gayi.");
         } catch (error) { onToast("error", friendlyFirebaseError(error)); }
       }
@@ -1323,7 +1329,7 @@
         if (!window.confirm("Ye entry reject karke delete karein?\n\n" + entryDetail(entry, memberName(entry.memberUid)))) return;
         try {
           await db.ref("entries/" + entry.id).remove();
-          await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) galat thi ya admin ne reject kar di, isliye delete ho gayi hai.`);
+          await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) galat thi ya Danish ne reject kar di, isliye delete ho gayi hai.`);
           onToast("success", "Entry delete ho gayi.");
         } catch (error) { onToast("error", friendlyFirebaseError(error)); }
       }
@@ -1336,7 +1342,7 @@
         try {
           await db.ref("entries/" + entry.id).remove();
           if (entry.by && entry.by !== user.uid) {
-            await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) admin ne delete kar di hai.`);
+            await notify(entry.memberUid, `Aapki ${money(entry.amount)} ki entry (${formatDate(entry.createdAt)}) Danish ne delete kar di hai.`);
           }
 
           onToast(
@@ -1403,7 +1409,7 @@
         <div className="min-h-screen gradient-bg">
           <Header
             user={user}
-            title="Admin Dashboard"
+            title="Danish Dashboard"
             subtitle="Digital Khata Management"
             onLogout={onLogout}
           />
@@ -1531,7 +1537,35 @@
               >
                 Pending{pendingList.length > 0 && <span className="ml-1.5 bg-red-600 text-white rounded-full px-2 text-xs">{pendingList.length}</span>}
               </button>
+              <button
+                onClick={() => downloadCsv([["Date", "Member", "Type", "Amount", "Note", "Status"], ...entries.map(e => [formatDate(e.createdAt), nameMap[e.memberUid] || "", e.type === "given" ? "Maine diye" : "Mujhe mile", e.amount, e.note || "", e.status === "pending" ? "Pending" : "Confirmed"])], "digital-khata.csv")}
+                className="px-4 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap text-slate-600 hover:bg-slate-100"
+              >
+                ⬇ Excel/CSV
+              </button>
             </div>
+
+            {activeTab === "members" && (() => {
+              const top = members
+                .map(m => ({ m, b: (memberSummaries[m.uid] || {}).balance || 0 }))
+                .filter(x => x.b > 0)
+                .sort((a, b) => b.b - a.b)
+                .slice(0, 3);
+              if (!top.length) return null;
+              return (
+                <div className="bg-white rounded-3xl border border-slate-200 card-shadow p-5 mb-5">
+                  <h3 className="font-black mb-3">🏆 Sabse zyada baaki</h3>
+                  <div className="space-y-2">
+                    {top.map((x, i) => (
+                      <div key={x.m.uid} className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
+                        <span className="font-bold">{["🥇", "🥈", "🥉"][i]} {x.m.name}</span>
+                        <span className="font-black text-red-600">{money(x.b)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* MEMBERS */}
 
@@ -1682,6 +1716,19 @@
                                 >
                                   + Entry
                                 </button>
+                      {Math.abs(summary.balance) > 0 && (
+                        <button
+                          onClick={() => saveEntry({
+                            memberUid: member.uid,
+                            amount: Math.abs(summary.balance),
+                            type: summary.balance > 0 ? "received" : "given",
+                            note: "Hisaab barabar kiya (settle)"
+                          })}
+                          className="rounded-xl px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-bold"
+                        >
+                          ✓ Settle
+                        </button>
+                      )}
 
                                 <button
                                   onClick={() =>
@@ -1924,7 +1971,7 @@
 
       async function saveMyEntry(f) {
         const e = { ...f, memberUid: user.uid, byName: member.name, createdAt: Date.now() };
-        if (!window.confirm("Ye entry admin ko bhejein?\n\n" + entryDetail(e, member.name))) return;
+        if (!window.confirm("Ye entry Danish ko bhejein?\n\n" + entryDetail(e, member.name))) return;
         setSaving(true);
         try {
           await db.ref("entries").push().set({
@@ -1933,7 +1980,7 @@
             by: user.uid, byName: member.name, status: "pending"
           });
           setEntryModal(false);
-          onToast("success", "Entry admin ko confirmation ke liye bhej di gayi.");
+          onToast("success", "Entry Danish ko confirmation ke liye bhej di gayi.");
         } catch (error) { onToast("error", friendlyFirebaseError(error)); }
         finally { setSaving(false); }
       }
@@ -2063,7 +2110,7 @@
                 </h2>
 
                 <p className="text-slate-500 mt-2">
-                  Aapka Firebase Auth UID admin ne
+                  Aapka Firebase Auth UID Danish ne
                   members list mein add nahi kiya hai.
                 </p>
               </div>
@@ -2085,6 +2132,8 @@
             <div className="flex gap-2 mb-4">
               <button onClick={() => setEntryModal(true)} className="rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-3">+ Entry</button>
               <button onClick={toggleNotes} className="rounded-2xl bg-white border border-slate-200 font-bold px-4 py-3">Notifications{notes.some(n => !n.read) && <span className="ml-1.5 bg-red-600 text-white rounded-full px-2 text-xs">{notes.filter(n => !n.read).length}</span>}</button>
+              <button onClick={() => downloadCsv([["Date", "Type", "Amount", "Note", "Status"], ...entries.map(e => [formatDate(e.createdAt), e.type === "given" ? "Danish ne diye" : "Maine diye", e.amount, e.note || "", e.status === "pending" ? "Pending" : "Confirmed"])], "mera-khata.csv")} className="rounded-2xl bg-white border border-slate-200 font-bold px-4 py-3">⬇ CSV</button>
+              <button onClick={() => window.print()} className="rounded-2xl bg-white border border-slate-200 font-bold px-4 py-3">🖨 Print</button>
             </div>
             {showNotes && (
               <div className="bg-white rounded-3xl border border-slate-200 card-shadow mb-5 divide-y divide-slate-100">
@@ -2130,7 +2179,7 @@
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
               <StatCard
-                title="Admin ne Diye"
+                title="Danish ne Diye"
                 value={money(summary.given)}
                 subtitle="Total given"
                 icon="↗"
@@ -2262,7 +2311,7 @@
                             <div className="font-black text-slate-900">
                               {entry.type ===
                               "given"
-                                ? "Admin ne diye"
+                                ? "Danish ne diye"
                                 : "Maine diye"}
                             </div>
 
@@ -2274,7 +2323,7 @@
 
                             {entry.status === "pending" && (
                               <div className="mt-2 flex items-center gap-2">
-                                <span className="text-xs font-bold rounded-full bg-amber-100 text-amber-700 px-2.5 py-1">Admin confirmation baaki</span>
+                                <span className="text-xs font-bold rounded-full bg-amber-100 text-amber-700 px-2.5 py-1">Danish confirmation baaki</span>
                                 {entry.by === user.uid && <button onClick={() => cancelMine(entry)} className="text-xs font-bold text-red-600">Cancel</button>}
                               </div>
                             )}
