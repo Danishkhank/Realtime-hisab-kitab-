@@ -206,6 +206,8 @@
 
       if (!phone) return null;
 
+      const full = phone.length === 10 ? "91" + phone : phone;
+
       let message = "";
 
       if (summary.balance > 0) {
@@ -216,16 +218,27 @@
         message += `Aapka hisaab filhaal barabar hai.`;
       }
 
-      message += `%0A%0A`;
-      message += `Maine diye: ₹${summary.given.toFixed(2)}%0A`;
-      message += `Mujhe mile: ₹${summary.received.toFixed(2)}%0A`;
-      message += `Net balance: ₹${Math.abs(summary.balance).toFixed(2)}%0A%0A`;
-      message += `Dhanyavaad.`;
+      message += `\n\nMaine diye: ₹${summary.given.toFixed(2)}`;
+      message += `\nMujhe mile: ₹${summary.received.toFixed(2)}`;
+      message += `\nNet balance: ₹${Math.abs(summary.balance).toFixed(2)}`;
+      const siteLink = window.location.origin + window.location.pathname;
+      message += `\n\nApna poora hisaab kitaab dekhne ke liye is link par click karein aur login karein:\n${siteLink}`;
+      message += `\n\nDhanyavaad.`;
 
-      const countryPhone =
-        phone.startsWith("91") ? phone : "91" + phone;
+      const text = encodeURIComponent(message);
+      const ua = navigator.userAgent || "";
 
-      return `https://wa.me/${countryPhone}?text=${message}`;
+      /* Normal WhatsApp (Business nahi) kholne ke liye */
+      if (/Android/i.test(ua)) {
+        const fallback = encodeURIComponent(`https://wa.me/${full}?text=${text}`);
+        return `intent://send/?phone=${full}&text=${text}#Intent;scheme=whatsapp;package=com.whatsapp;S.browser_fallback_url=${fallback};end`;
+      }
+
+      if (/iPhone|iPad|iPod/i.test(ua)) {
+        return `whatsapp://send?phone=${full}&text=${text}`;
+      }
+
+      return `https://wa.me/${full}?text=${text}`;
     }
 
     function calculateSummary(entries) {
@@ -1698,7 +1711,7 @@
                                 {whatsapp && (
                                   <a
                                     href={whatsapp}
-                                    target="_blank"
+                                    target={whatsapp.startsWith("http") ? "_blank" : undefined}
                                     rel="noopener noreferrer"
                                     className="rounded-xl px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold"
                                   >
